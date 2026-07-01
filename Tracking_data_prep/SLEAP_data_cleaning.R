@@ -1,28 +1,29 @@
 # Clean and process sleap tracking data -- Implementing DLC_analyzer code --
 # Sturman et al, 2020 (DOI:10.1038/s41386-020-0776-y) on SLEAP data.
 
-#load in required packages 
+#load in required packages
 options(repos = c(REPO_NAME = "https://packagemanager.rstudio.com/all/latest"))
+library(dplyr)
 library(readxl)
 library(writexl)
-library(sp)         #tested with v1.3-2
 library(imputeTS)   #tested with v3.0
 library(ggplot2)    #tested with v3.1.0
-library(ggmap)      #tested with v3.0.0
 library(data.table) #tested with v1.12.8
 library(cowplot)    #tested with v0.9.4
-library(corrplot)   #tested with v0.84
+# Note: sp/ggmap/corrplot were dropped here -- not used by any function this
+# script actually calls. sp is only needed if CleanTrackingData's existence.pol
+# polygon filtering is turned on below.
 
 #source functions from DLCAnalyzer_Functions_final.r (DOI:10.1038/s41386-020-0776-y)
-  # Make sure the DLCAnalyzer_Functions_final.R is downloaded and change path_name to current path 
-source('path_name/DLCAnalyzer_Functions_final.R')
+source('/Users/myafreeman/Documents/GitHub/Pair_Separation_Project/Tracking_data_prep/DLCAnalyzer_Functions_final.R')
 
 # Define input folder containing csv files of tracking data
-  #ensure birdID included in file name 
-input_folder <- "" #Change for parsed, DLC formation files location 
+  #ensure birdID included in file name
+input_folder <- "/Users/myafreeman/Documents/GitHub/Pair_Separation_Project/Tracking_data_prep/DLC_formatted" #Change for parsed, DLC formation files location
 
-#define output folder for processed files 
-output_folder <- "" 
+#define output folder for processed files
+output_folder <- "/Users/myafreeman/Documents/GitHub/Pair_Separation_Project/Tracking_data_prep/Processed"
+if (!dir.exists(output_folder)) dir.create(output_folder, recursive = TRUE)
 
 # List all CSV files in the input folder
 files <- list.files(input_folder, pattern = "\\.csv$", full.names = TRUE)
@@ -146,7 +147,7 @@ for (file in files) {
   Tracking <- ReadDLCDataFromCSV(file = file, fps = 30)
   #Tracking <- CleanTrackingData(Tracking, likelihoodcutoff = 0.50)
   Tracking<- InterpolateTrackingData_perSubset(Tracking, method = "linear", mark_interpolated = TRUE)
-  Tracking <- convert_tracking_to_cm(Tracking, video_height = 1080, arena_height_in = 8) 
+  Tracking <- convert_tracking_to_cm(Tracking, video_height = 1080, arena_height_in = 10)
   
   # Initialize vectors
   frames <- c()
@@ -154,11 +155,14 @@ for (file in files) {
   x_head_raw <- c(); y_head_raw <- c()
   x_beak <- c(); y_beak <- c()
   x_beak_raw <- c(); y_beak_raw <- c()
+  x_tail_base <- c(); y_tail_base <- c()
+  x_tail_base_raw <- c(); y_tail_base_raw <- c()
   likelihood_head <- c()
   likelihood_beak <- c()
-  
-  
-  # Loop through frames and extract both Head and Beak positions (cm units)
+  likelihood_tail_base <- c()
+
+
+  # Loop through frames and extract Head, Beak, and Tail_base positions (cm units)
   for (i in seq_along(Tracking$frames)) {
     frames <- c(frames, Tracking[["frames"]][[i]])
     x_head <- c(x_head, Tracking[["data"]][["Head"]][["x_cm"]][[i]])
@@ -171,8 +175,13 @@ for (file in files) {
     likelihood_beak <- c(likelihood_beak, Tracking[["data"]][["Beak"]][["likelihood"]][[i]])
     x_beak_raw <- c(x_beak_raw, Tracking[["data"]][["Beak"]][["x_raw_cm"]][[i]])
     y_beak_raw <- c(y_beak_raw, Tracking[["data"]][["Beak"]][["y_raw_cm"]][[i]])
+    x_tail_base <- c(x_tail_base, Tracking[["data"]][["Tail_base"]][["x_cm"]][[i]])
+    y_tail_base <- c(y_tail_base, Tracking[["data"]][["Tail_base"]][["y_cm"]][[i]])
+    likelihood_tail_base <- c(likelihood_tail_base, Tracking[["data"]][["Tail_base"]][["likelihood"]][[i]])
+    x_tail_base_raw <- c(x_tail_base_raw, Tracking[["data"]][["Tail_base"]][["x_raw_cm"]][[i]])
+    y_tail_base_raw <- c(y_tail_base_raw, Tracking[["data"]][["Tail_base"]][["y_raw_cm"]][[i]])
   }
-  
+
   # Create a combined data frame
   df <- data.frame(
     Frame = frames,
@@ -185,7 +194,12 @@ for (file in files) {
     y_beak = y_beak,
     x_beak_raw = x_beak_raw,
     y_beak_raw = y_beak_raw,
-    likelihood_beak = likelihood_beak
+    likelihood_beak = likelihood_beak,
+    x_tail_base = x_tail_base,
+    y_tail_base = y_tail_base,
+    x_tail_base_raw = x_tail_base_raw,
+    y_tail_base_raw = y_tail_base_raw,
+    likelihood_tail_base = likelihood_tail_base
   )
   
   # Compute deltas, speed, acceleration for head (cm per frame)
@@ -205,7 +219,16 @@ for (file in files) {
   # Convert to cm/s
   df$speed_beak_psec <- df$speed_beak_pframe * Tracking$fps
   df$acceleration_beak_psec <- c(0, diff(df$speed_beak_psec)) * Tracking$fps  # cm/s²
-  
+
+  # Compute deltas, speed, acceleration for tail_base
+  df$delta_x_tail_base <- c(0, diff(df$x_tail_base_raw))
+  df$delta_y_tail_base <- c(0, diff(df$y_tail_base_raw))
+  df$speed_tail_base_pframe <- sqrt(df$delta_x_tail_base^2 + df$delta_y_tail_base^2)  # cm/frame
+
+  # Convert to cm/s
+  df$speed_tail_base_psec <- df$speed_tail_base_pframe * Tracking$fps
+  df$acceleration_tail_base_psec <- c(0, diff(df$speed_tail_base_psec)) * Tracking$fps  # cm/s²
+
   # Add sequential frame index
   df$adj_frame <- seq_len(nrow(df))
   

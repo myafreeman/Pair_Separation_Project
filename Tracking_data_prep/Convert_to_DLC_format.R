@@ -1,10 +1,11 @@
 # To use cleaning scripts from (Sturman et al, 2020 (DOI:10.1038/s41386-020-0776-y) need to convert
 # column names to DLC Format
 
+library(dplyr)
 
 # Paths
-input_folder  <- ""     # folder with subsetted CSV/XLSX files
-output_folder <- ""     # folder to save DLC-style files
+input_folder  <- "/Users/myafreeman/Documents/GitHub/Pair_Separation_Project/SLEAP_data"     # parent folder holding one subfolder per bird
+output_folder <- "/Users/myafreeman/Documents/GitHub/Pair_Separation_Project/Tracking_data_prep/DLC_formatted"     # folder to save DLC-style files (flat, all birds)
 
 if (!dir.exists(output_folder)) dir.create(output_folder, recursive = TRUE)
 
@@ -71,8 +72,10 @@ process_file <- function(file, output_folder, scorer = "scorer") {
   message("Saved: ", out_path)
 }
 
-# Get list of files
-subset_files <- list.files(input_folder, pattern = "\\.(csv|xlsx)$", full.names = TRUE)
+# Get list of files across all bird subfolders (matches raw SLEAP export naming,
+# e.g. "..._Baseline.analysis.csv" -- excludes metadata.csv and anything else)
+subset_files <- list.files(input_folder, pattern = "\\.analysis\\.(csv|xlsx)$",
+                            full.names = TRUE, recursive = TRUE)
 
 # Process them all
 lapply(subset_files, process_file, output_folder = output_folder, scorer = "")
