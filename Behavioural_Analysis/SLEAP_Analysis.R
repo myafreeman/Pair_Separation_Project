@@ -1,8 +1,4 @@
-# Behavioral analysis of pre-cleaned tracking data -- adapted from
-# M. Bierman's Noradrenaline_proj SLEAP_Analysis.R for the Pair Separation
-# Project. Metrics, formulas, transforms, and QC steps are unchanged from the
-# original; only the study design (metadata scheme, grouping variables, and
-# models) has been adapted to Phase/Day/BirdID/Condition.
+# Behavioral analysis of pre-cleaned tracking data
 
 ##Load packages
 library(readr)
@@ -33,13 +29,7 @@ PairSep_data <- read_csv("../Tracking_data_prep/PairSep_combined_cm.csv")
   #In processing script was done on raw - change to interpolated for continious data
 fps <- 60
 
-# NOTE: grouped by BirdID, Phase, Day, SessionID (not just BirdID as in the
-# original) because this combined CSV concatenates a separate recording for
-# every Day x Phase (and eventually multiple videos per Day) for each bird.
-# Grouping only by BirdID would let lag() bridge the last frame of one
-# recording into the first frame of the next, producing a spurious speed
-# spike at every session boundary. SessionID is included so that once a Day
-# has multiple videos, each video's frame sequence still resets independently.
+# NOTE: grouped by BirdID, Phase, Day, SessionID 
 PairSep_data <- PairSep_data %>%
   group_by(BirdID, Phase, Day, SessionID) %>%
   mutate(
@@ -56,11 +46,6 @@ PairSep_data <- PairSep_data %>%
 # Metrics for amount of partial detection
 ##Percent instances missing in all cases
 
-# NOTE: head detection coverage varies by Day in this dataset (as high as 98%
-# on Day 1, down to ~74% by Day 3). Head is kept as the primary node per
-# supervisor guidance, but this day-dependent missingness could interact with
-# the Day term in the models below -- worth keeping in mind when interpreting
-# a Day effect.
 PairSep_data_metrics <- PairSep_data %>%
   mutate(
     head_only = !is.na(x_head_raw) &  is.na(x_beak_raw),
@@ -300,10 +285,6 @@ emm_poly <- emmeans(
   at = list(Day = 1:5)
 )
 
-# NOTE: this installed emmeans version reports asymp.LCL/asymp.UCL (not
-# lower.CL/upper.CL) for glmmTMB models, since they report df = Inf --
-# same asymptotic-normal CI, just a newer column name. No change to the
-# statistics.
 emm_df_poly <- as.data.frame(emm_poly) %>%
   mutate(
     area_hat = emmean,
@@ -468,9 +449,6 @@ hist(log(PairSep_int_ent$shannon_entropy))
 # ---- Experimental-birds-only subset for the inferential model ----
 PairSep_int_ent_expt <- PairSep_int_ent %>% filter(Condition == "Experimental")
 
-# NOTE: matches her actual fitted model, not the log/sqrt/cbrt histograms
-# above -- those were exploratory only. Her glmmTMB() call uses raw
-# shannon_entropy with gaussian identity, no transform.
 ent_model <- glmmTMB(shannon_entropy ~ Phase * Day + (1|BirdID),
                            family = gaussian(link = "identity"), data = PairSep_int_ent_expt)
 
@@ -494,9 +472,6 @@ emm_ent <- emmeans(
   at = list(Day = 1:5)
 )
 
-# NOTE: same asymp.LCL/asymp.UCL naming as the area section above (df = Inf
-# for glmmTMB models in this emmeans version) -- renamed for the geom_ribbon
-# call below, no change to the statistics.
 emm_df_ent <- as.data.frame(emm_ent) %>%
   mutate(lower.CL = asymp.LCL, upper.CL = asymp.UCL)
 
@@ -602,9 +577,6 @@ emm_speed <- emmeans(
 )
 
 #to plot log values in back
-# NOTE: same asymp.LCL/asymp.UCL naming as the area/entropy sections above
-# (df = Inf for glmmTMB models in this emmeans version), no change to the
-# statistics.
 emm_df_speed <- as.data.frame(emm_speed) %>%
   mutate(
     area_hat = emmean,
