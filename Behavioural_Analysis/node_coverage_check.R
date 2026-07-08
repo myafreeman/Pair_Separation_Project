@@ -14,11 +14,11 @@
 # where the head is missing -- which decides whether you use head
 # alone, tail base alone, or a fallback strategy for speed/freezing.
 #
-# Assumes a combined cleaned df `birds_all` with columns:
-#   BirdID, Phase, Day, Condition, x_head_raw, x_tailbase_raw
+# Assumes the combined cleaned df `PairSep_data` (from
+# Tracking_data_prep/SLEAP_combine_data.R) with columns:
+#   BirdID, Phase, Day, Condition, x_head_raw, x_tail_base_raw
 # (uses the _raw columns because those hold the ORIGINAL detections
 #  with NAs -- NOT the interpolated columns, which have no NAs)
-# Adjust "x_tailbase_raw" if your tail base column is named differently.
 # =============================================================
 
 library(dplyr)
@@ -28,10 +28,10 @@ library(ggplot2)
 # -------------------------------------------------------------
 # STEP 1: FLAG DETECTION TYPE PER FRAME
 # -------------------------------------------------------------
-coverage <- birds_all %>%
+coverage <- PairSep_data %>%
   mutate(
     head_present = !is.na(x_head_raw),
-    tail_present = !is.na(x_tailbase_raw),
+    tail_present = !is.na(x_tail_base_raw),
 
     both_seen  =  head_present &  tail_present,
     head_only  =  head_present & !tail_present,
