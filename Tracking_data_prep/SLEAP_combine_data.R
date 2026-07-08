@@ -49,13 +49,17 @@ add_metadata <- function(file, metadata) {
     return(NULL)
   }
 
-  # Add metadata columns
+  # Add metadata columns. SessionID is carried through (not just used for the
+  # lookup above) so that once a Day has multiple videos, downstream analysis
+  # can still tell which frames came from the same continuous recording --
+  # BirdID+Phase+Day alone won't distinguish separate videos on the same day.
   dat <- dat %>%
     mutate(
       BirdID = bird_id,
       Phase = phase,
       Day = meta$Day,
       Condition = meta$Condition,
+      SessionID = session_id,
       .before = 1
     )
 
