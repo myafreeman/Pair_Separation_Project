@@ -9,7 +9,6 @@ library(readr)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
-library(circular)
 library(glmmTMB)
 library(DHARMa)
 library(lmerTest)
@@ -230,124 +229,8 @@ summary_PairSep <- PairSep_data %>%
 #Analysis Metrics ---------------------------------------------------------
 #With data already filtered to some upper_threshold based on quantile measure
 
-# Circular Variance of Head angles ----------------------------------------
-##Flip data to orient into correct quadrant
+##Flip data to orient into correct quadrant (used by the area metric below)
 PairSep_data$y_head_neg <- PairSep_data$y_head * -1
-PairSep_data$y_beak_neg <- PairSep_data$y_beak * -1
-
-# Function to compute head angle in radians
-compute_head_angle <- function(x_head, y_head_neg, x_beak, y_beak_neg) {
-  atan2(y_beak_neg - y_head_neg, x_beak - x_head)  # Angle from head to beak
-}
-
-# Add head angle column
-PairSep_data <- PairSep_data %>%
-  mutate(head_angle = compute_head_angle(x_head, y_head_neg, x_beak, y_beak_neg))
-
-PairSep_data <- PairSep_data %>%
-  mutate(head_angle_deg = (head_angle * 180 / pi) %% 360)
-
-
-# Circular Variance ------- per session (BirdID x Phase x Day)
-circular_variance <- PairSep_data %>%
-  group_by(BirdID, Condition, Phase, Day) %>%
-  summarise(head_var = var.circular(circular(head_angle), na.rm = TRUE), .groups = "drop")
-
-hist(circular_variance$head_var)
-
-# ---- Experimental-birds-only subset for the inferential model ----
-# A single control bird can't support a valid Phase*Condition comparison, so
-# the mixed model is fit on the 2 experimental birds only. The control bird
-# stays in `circular_variance` above and is shown in the descriptive plot
-# below (dashed linetype), just excluded from the fitted model.
-circular_variance_expt <- circular_variance %>% filter(Condition == "Experimental")
-
-var_model <- glmmTMB(head_var ~ Phase * Day + (1|BirdID),
-                        family = beta_family(link = "logit"), data = circular_variance_expt,
-                        control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
-
-Anova(var_model)
-summary(var_model)
-
-#residuals
-simulationOutput <- simulateResiduals(fittedModel = var_model, plot = TRUE)
-plot(residuals(var_model))
-qqnorm(resid(var_model))
-qqline(resid(var_model))
-
-# Day is continuous here (not an ordered factor like her time_bin_3min), so
-# pairwise comparisons at representative days plus a trend test replace her
-# `pairs(emmeans(..., ~ Condition | time_bin_3min))` post-hoc approach.
-pairs(emmeans(var_model, ~ Phase | Day, at = list(Day = c(1, 3, 5))), adjust = "holm")
-emtrends(var_model, ~ Phase, var = "Day")  # does the recovery slope over Day differ by Phase?
-
-### Raw points and model predictions plot #########
-emm_var <- emmeans(
-  var_model,
-  ~ Phase * Day,
-  at = list(Day = 1:5),
-  type = "response"   # IMPORTANT: back-transforms from logit to original scale
-)
-
-emm_df <- as.data.frame(emm_var)
-
-#Fig 3a
-ggplot(circular_variance,
-       aes(x = Day, y = head_var, color = Phase)) +
-
-  # Raw data (all birds, including control)
-  geom_jitter(
-    aes(group = BirdID),
-    width = 0.15,
-    alpha = 0.3,
-    size = 1
-  ) +
-
-  geom_line(
-    aes(group = interaction(BirdID, Phase), linetype = Condition),
-    alpha = 0.15,
-    linewidth = 0.4
-  ) +
-
-  # Model-predicted means (experimental birds only)
-  geom_line(
-    data = emm_df,
-    aes(y = response, group = Phase),
-    linewidth = 1.2
-  ) +
-
-  # 95% CI ribbon (asymptotic)
-  geom_ribbon(
-    data = emm_df,
-    aes(
-      y = response,
-      ymin = asymp.LCL,
-      ymax = asymp.UCL,
-      fill = Phase,
-      group = Phase
-    ),
-    alpha = 0.25,
-    color = NA
-  ) +
-  scale_color_manual(values = c("Baseline"="purple", "PairSep"="orange"))+
-  scale_fill_manual(values = c("Baseline"="purple", "PairSep"="orange"))+
-  scale_linetype_manual(values = c("Experimental" = "solid", "Control" = "dashed")) +
-  labs(x="Day", y="CV of Head Angles", linetype = "Condition (bird)")+
-  theme_classic()+
-  theme(
-    legend.position = "right",
-    legend.title = element_text(size = 11, face = "bold"),
-    legend.text = element_text(size = 10, face = "bold"),
-    axis.title = element_text(size = 14, face = "bold"),
-    axis.text = element_text(size = 10, face = "bold"),
-    strip.background = element_blank(),
-    strip.text = element_text(face = "bold", size = 11),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    axis.line = element_line(colour = "black")
-  )
-
-
 
 
 # AREA --------------------------------------------------------------------
@@ -795,12 +678,9 @@ PairSep_int_ent$ID <- paste(PairSep_int_ent$BirdID, PairSep_int_ent$Phase, PairS
 
 PairSep_binned_speed$ID <- paste(PairSep_binned_speed$BirdID, PairSep_binned_speed$Phase, PairSep_binned_speed$Day, sep = "_")
 
-circular_variance$ID <- paste(circular_variance$BirdID, circular_variance$Phase, circular_variance$Day, sep = "_")
-
 Concave_hull_areas$ID <- paste(Concave_hull_areas$BirdID, Concave_hull_areas$Phase, Concave_hull_areas$Day, sep = "_")
 Concave_hull_areas <- rename(Concave_hull_areas, concave_area = area)
 
 #Combine metrics into one data frame
-all_metrics <- merge(PairSep_binned_speed, circular_variance[, c("ID", "head_var")], by = "ID", all.x = TRUE)
-all_metrics <- merge(all_metrics, PairSep_int_ent[, c("ID", "shannon_entropy")], by = "ID", all.x = TRUE)
+all_metrics <- merge(PairSep_binned_speed, PairSep_int_ent[, c("ID", "shannon_entropy")], by = "ID", all.x = TRUE)
 all_metrics <- merge(all_metrics, Concave_hull_areas[, c("ID", "concave_area")], by = "ID", all.x = TRUE)
